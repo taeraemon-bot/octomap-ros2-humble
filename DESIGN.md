@@ -1,41 +1,37 @@
-# 🎀 OctoMap ROS 2 Humble Porting Design Document
+# Design Document: OctoMap ROS 2 Humble Port
 
-## 1. Goal
-To create a standalone ROS 2 Humble wrapper for the OctoMap library, ensuring independence from ROS 1 legacy code and maximizing efficiency.
+## Goals
+The goal of this project is to provide a standalone, high-performance ROS 2 Humble implementation of the OctoMap server and client, removing dependencies on ROS 1.
 
-## 2. Architecture
-The project will be divided into a core library dependency and a ROS 2 interface layer.
+## System Design
 
-### 2.1 Dependency Layer
-- **OctoMap (C++ Library):** Use the official `octomap` library for 3D occupancy grid mapping.
-- **ROS 2 Humble:** Target distribution.
-- **rclcpp:** ROS 2 C++ client library.
-- **sensor_msgs:** For `PointCloud2` input.
-- **octomap_msgs:** For Octomap data transmission.
+### 1. OctomapServer
+The server acts as the primary producer of the 3D map.
+- **Inputs**: 
+  - PointCloud2 messages from sensors.
+  - TF transforms to align sensor data with the world frame.
+- **Internal Process**:
+  - Points are iterated using `PointCloud2Iterator`.
+  - Points are transformed using `tf2_ros::Buffer`.
+  - Points are inserted into an `octomap::OcFoM` instance.
+- **Outputs**:
+  - Binary serialized OctoMap messages.
 
-### 2.2 Key Components to Implement
-- **`OctomapServerNode`**: 
-    - Subscribes to `sensor_msgs/msg/PointCloud2`.
-    - Updates the OctoMap model.
-    - Provides services to save/load maps.
-    - Publishes the map to `octomap_msgs/msg/Octomap`.
-- **`OctomapClientNode`**:
-    - Receives OctoMap data and provides a simplified interface for other nodes.
-- **`Tf2 Integration`**:
-    - Handle coordinate transformations using `tf2_ros` to ensure accurate map alignment.
+### 2. OctomapClient
+The client allows other nodes to consume the map.
+- **Inputs**: Binary OctoMap messages.
+- **Process**: Deserializes the `std::vector<uint8_t>` data into an `octomap::OcTree`.
 
-## 3. Porting Strategy (ROS 1 $\rightarrow$ ROS 2)
-| Feature | ROS 1 (Official) | ROS 2 Humble (Port) |
-| :--- | :--- | :--- |
-| **Node Base** | `ros::NodeHandle` | `rclcpp::Node` |
-| **Build System** | `catkin` | `ament_cmake` |
-| **Comm. Model** | Synchronous/Asynchronous | Managed by Executors / Callbacks |
-| **TF** | `tf` | `tf2_ros` |
-| **Parameters** | `ros::NodeHandle::getParam` | `this->get_parameter()` |
+### 3. Smoke Test
+The smoke test validates the integration.
+- **Mechanism**:
+  - Broadcaster: `world` $\rightarrow$ `sensor_frame` (translation: 1,1,1).
+  - Publisher: Point at (0,0,0) in `sensor_frame`.
+  - Expectation: Server records point at (1,1,1) in `world`.
 
-## 4. Implementation Roadmap
-1. **Phase 1: Skeleton** - Create package structure, `package.xml`, `CMakeLists.txt`.
-2. **Phase 2: Core Integration** - Link `octomap` library and verify basic build.
-3. **Phase 3: Server Implementation** - Implement PointCloud $\rightarrow$ Octomap update logic.
-4. **Phase 4: TF2 & Messaging** - Integrate `tf2_ros` and `octomap_msgs`.
-5. **Phase 5: Validation** - Test with sample data in RViz2.
+## Dependencies
+- `rclcpp`: ROS 2 C++ Client Library.
+- `octomap`: The core OctoMap library.
+- `octomap_msgs`: ROS 2 messages for OctoMap.
+- `tf2_ros` / `tf2_geometry_msgs`: Transform management.
+- `sensor_msgs`: PointCloud2 data.
