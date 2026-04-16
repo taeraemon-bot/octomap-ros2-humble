@@ -1,91 +1,70 @@
-#include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <octomap_msgs/msg/octomap.hpp>
-#include <octomap/octomap.h>
-#include <octomap/OcFoM.h>
-#include <//TF2/tf2_ros/transform_listener.h>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <octomap_ros2_humble/octomap_ros2_humble/octomap_server.hpp>
 
-class OctomapServer : public rclcpp::Node {
-public:
-    OctomapServer() : Node("octomap_server") {
-        // Parameter initialization
-        this->declare_parameter("resolution", 0.1);
-        this->declare_parameter("max_range", 10.0);
+OctomapServer::OctomapServer() : Node("octomap_server") {
+    this->declare_parameter("resolution", 0.1);
+    this->declare_parameter("max_range", 10.0);
 
-        resolution_ = this->get_parameter("resolution").as_double();
-        max_range_ = this->get_parameter("max_range").as_double();
+    resolution_ = this->get_parameter("resolution").as_double();
+    max_range_ = this->get_parameter("max_range").as_double();
 
-        // Initialize Octomap
-        octomap_ = std::make_shared<octomap::OcFoM>(resolution_);
+    octomap_ = std::make_shared<octomap::OcFoM>(resolution_);
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-        // TF Buffer and Listener
-        tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    point_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+        "/cloud_in", 10, std::bind(&OctomapServer::cloud_callback, this, std::placeholders::_1));
 
-        // Subscribers
-        point_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/cloud_in", 10, std::bind(&OctomapServer::cloud_callback, this, std::placeholders::_1));
+    map_pub_ = this->create_publisher<octomap_msgs::msg::Octomap>("/octomap_binary", 10);
 
-        // Publisher
-        map_pub_ = this->create_publisher<octomap_msgs::msg::Octomap>("/octomap_binary", 10);
+    RCLCPP_INFO(this->get_logger(), "Octomap Server initialized. Resolution: %f", resolution_);
+}
 
-        RCLCPP_INFO(this->get_logger(), "Octomap Server Node initialized with resolution: %f", resolution_);
+OctomapServer::~OctomapServer() {}
+
+void OctomapServer::cloud_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+    geometry_msgs::msg::TransformStamped transform;
+    try {
+        transform = tf_buffer_->lookupTransform("world", msg->header.frame_id, tf2::Time(0));
+    } catch (tf2::TransformException &ex) {
+        RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s", ex.what());
+        return;
     }
 
-    void cloud_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-        // 1. Get transform from world to sensor
-        geometry_msgs::msg::TransformStamped transform;
-        try {
-            transform = tf_buffer_->lookupTransform("world", msg->header.frame_id, tf2::Time(0));
-        } catch (tf2::TransformException &ex) {
-            RCLCPP_WARN(this->get_logger(), "Could not transform %s to world: %s", msg->header.frame_id.c_str(), ex.what());
-            return;
-        }
+    sensor_msgs::PointCloud2Iterator<float> iter_x(msg->header.frame_id, msg->points, sensor_msgs::PointCloud2Iterator<float>::FieldX);
+    sensor_msgs::PointCloud2Iterator<float> iter_y(msg->header.frame_id, msg->points, sensor_msgs::PointCloud2Iterator<float>::FieldY);
+    sensor_msgs::PointCloud2Iterator<float> iter_z(msg->header.frame_id, msg->points, sensor_msgs::PointCloud2Iterator<float>::FieldZ);
 
-        // 2. Iterate through points and insert into Octomap
-        sensor_msgs::PointCloud2Iterator<float> iter(msg->header.frame_id, msg->points, 
-                                                     sensor_msgs::PointCloud2Iterator<float>::// la- la- la
-                                                     // Need to iterate over X, Y, Z
-                                                     // For simplicity in the skeleton, we'll use a loop here
-                                                     // (Actual implementation will be more robust)
-                                                     );
+    int count = 0;
+    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+        float x = *iter_x;
+        float y = *iter_y;
+        float z = *iter_z;
 
-        // This is a simplified insertion for the skeleton
-        // Real logic will go here in the next commit
-        RCLCPP_DEBUG(this->get_logger(), "Received point cloud, updating map...");
-        
-        // Trigger map publishing periodically or on demand
-        publish_map();
+        if (std::isnan(x) || std::isnan(y) || std::isnan(z)) continue;
+
+        // Transform point to world frame
+        tf2::Vector3 point_sensor(x, y, z);
+        tf2::Transform transform_tf;
+        tf2::geometry_msgs::tf2::transformStampedTotf2(transform, transform_tf);
+        tf2::Vector3 point_world = transform_tf * point_sensor;
+
+        // Distance check
+        float dist = std::sqrt(point_world.x()*point_world.x() + point_world.y()*point_world.y() + point_world.z()*point_world.z());
+        if (dist > max_range_) continue;
+
+        octomap_->insertNode(point_world.x(), point_world.y(), point_world.z());
+        count++;
     }
 
-    void publish_map() {
-        auto msg = octomap_msgs::msg::Octomap();
-        // Binary serialization of the Octomap
-        std::stringstream ss;
-        octomap_->write(ss);
-        std::string data = ss.str();
-        
-        msg.data.assign(data.begin(), data.end());
-        map_pub_->publish(msg);
-    }
+    RCLCPP_DEBUG(this->get_logger(), "Inserted %d points into Octomap", count);
+    publish_map();
+}
 
-private:
-    double resolution_;
-    double max_range_;
-    std::shared_ptr<octomap::OcFoM> octomap_;
-    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_sub_;
-    rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr map_pub_;
-};
-
-int main(int argc, char** argv) {
-    rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<OctomapServer>());
-    rclcpp::shutdown();
-    return 0;
+void OctomapServer::publish_map() {
+    auto msg = octomap_msgs::msg::Octomap();
+    std::stringstream ss;
+    octomap_->write(ss);
+    std::string data = ss.str();
+    msg.data.assign(data.begin(), data.end());
+    map_pub_->publish(msg);
 }

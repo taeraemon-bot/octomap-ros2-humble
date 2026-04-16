@@ -17,7 +17,7 @@ include_directories(
   include
 )
 
-# Core Node
+# Core Nodes
 add_executable(octomap_server_node src/octomap_ros2_humble/octomap_server.cpp)
 target_link_libraries(octomap_server_node
   rclcpp::rclcpp
@@ -28,8 +28,25 @@ target_link_libraries(octomap_server_node
   tf2_geometry_msgs::tf2_geometry_msgs
 )
 
+add_executable(octomap_client_node src/octomap_ros2_humble/octomap_client.cpp)
+target_link_libraries(octomap_client_node
+  rclcpp::rclcpp
+  octomap::octomap
+  octomap_msgs::octomap_msgs
+)
+
+add_executable(octomap_smoke_test_node src/octomap_ros2_humble/smoke_test.cpp)
+target_link_libraries(octomap_smoke_test_node
+  rclcpp::rclcpp
+  sensor_msgs::sensor_msgs
+  tf2_ros::tf2_ros
+  tf2_geometry_msgs::tf2_geometry_msgs
+)
+
 install(TARGETS
   octomap_server_node
+  octomap_client_node
+  octomap_smoke_test_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
