@@ -1,22 +1,47 @@
 <?xml version="1.0"?>
-<?model-info version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>octomap_ros2_humble</name>
-  <version>0.1.0</version>
-  <description>Standalone port of OctoMap for ROS 2 Humble</description>
+  <version>0.2.0</version>
+  <description>
+    A complete ROS 2 Humble port of OctoMap with modern architecture.
+    Provides server/client nodes for 3D occupancy mapping from point clouds.
+    
+    Features:
+    - OctoMapServer: Generates 3D occupancy maps from point cloud input
+    - OctoMapClient: Receives and analyzes OctoMap binary data
+    - SmokeTest: Utility for end-to-end pipeline testing
+    - Conversion utilities for ROS 2 message types
+  </description>
+  
   <maintainer email="taeraemon.bot@gmail.com">taeraemon-bot</maintainer>
   <license>BSD</license>
+  
+  <author>Original: A. Hornung, University of Freiburg</author>
+  <author>ROS 2 Port: taeraemon-bot with Mashiro</author>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>rclcpp</depend>
-  <depend>sensor_msgs</depend>
-  <depend>octomap</depend>
-  <depend>octomap_msgs</depend>
-  <depend>tf2_ros</depend>
-  <depend>tf2_geometry_msgs</depend>
+  <build_depend>octomap</build_depend>
+  <build_depend>rclcpp</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>octomap_msgs</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  <build_depend>tf2_geometry_msgs</build_depend>
+
+  <exec_depend>octomap</exec_depend>
+  <exec_depend>rclcpp</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>octomap_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>tf2_geometry_msgs</exec_depend>
+  
+  <!-- Optional visualization -->
+  <exec_depend>rviz2</exec_depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
